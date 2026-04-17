@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Jenga Physics Editor</title>
+  <style>
+    body {
+      margin: 0;
+      display: flex;
+      font-family: sans-serif;
+      overflow: hidden;
+    }
+
+    #sidebar {
+      width: 160px;
+      background: #222;
+      color: white;
+      padding: 10px;
+      box-sizing: border-box;
+    }
+
+    .btn {
+      background: #555;
+      margin: 10px 0;
+      padding: 10px;
+      cursor: pointer;
+      text-align: center;
+    }
+
+    canvas {
+      flex: 1;
+      background: #eee;
+    }
+  </style>
+</head>
+<body>
+
+<div id="sidebar">
+  <div class="btn" onclick="spawnBlock()">Add Block</div>
+  <div class="btn" onclick="togglePause()">Pause</div>
+  <div>R = rotate (paused)</div>
+  <div>D + click = delete</div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+<script>
+const {
+  Engine, Render, Runner, Bodies, World,
+  Mouse, Body, Events, Constraint, Composite
+} = Matter;
+
+const engine = Engine.create();
+const world = engine.world;
+
+let paused = false;
+let selectedBody = null;
+let grabConstraint = null;
+
+let rotating = false;
+let deleting = false;
+let lastMouseX = 0;
+
+// Renderer
+const render = Render.create({
+  element: document.body,
+  engine: engine,
+  options: {
+    width: window.innerWidth - 160,
+    height: window.innerHeight,
+    wireframes: false
+  }
+});
+
+Render.run(render);
+
+const runner = Runner.create();
+Runner.run(runner, engine);
+
+// --------------------
+// GROUND
+// --------------------
+function createGround() {
+  return Bodies.rectangle(
+    (window.innerWidth - 160) / 2,
+    window.innerHeight - 20,
+    window.innerWidth,
+    40,
+    { isStatic: true }
+  );
+}
+
+let ground = createGround();
+World.add(world, ground);
+
+// --------------------
+// MOUSE
+// --------------------
+const mouse = Mouse.create(render.canvas);
+
+// --------------------
+// KEY INPUT
+// --------------------
+window.addEventListener("keydown", (e) => {
+  const k = e.key.toLowerCase();
+
+  if (k === "r") rotating = true;
+  if (k === "d") deleting = true;
+});
+
+window.addEventListener("keyup", (e) => {
+  const k = e.key.toLowerCase();
+
+  if (k === "r") rotating = false;
+  if (k === "d") deleting = false;
+});
+
+// --------------------
+// MOUSE DOWN
+// --------------------
+render.canvas.addEventListener("mousedown", () => {
+  const bodies = Composite.allBodies(world);
+
+  for (let body of bodies) {
+    if (body === ground) continue;
+
+    if (Matter.Bounds.contains(body.bounds, mouse.position)) {
+
+      // 🗑 DELETE MODE (no trash button anymore)
+      if (deleting) {
+        World.remove(world, body);
+        return;
+      }
+
+      selectedBody = body;
+
+      // 🧲 HINGE ONLY WHEN RUNNING
+      if (!paused) {
+        const offset = {
+          x: mouse.position.x - body.position.x,
+          y: mouse.position.y - body.position.y
+        };
+
+        grabConstraint = Constraint.create({
+          pointA: mouse.position,
+          bodyB: body,
+          pointB: offset,
+          stiffness: 0.9,
+          damping: 0.1
+        });
+
+        World.add(world, grabConstraint);
+      }
+
+      break;
+    }
+  }
+});
+
+// --------------------
+// MOUSE UP
+// --------------------
+render.canvas.addEventListener("mouseup", () => {
+  if (grabConstraint) {
+    World.remove(world, grabConstraint);
+    grabConstraint = null;
+  }
+
+  selectedBody = null;
+});
+
+// --------------------
+// MAIN LOOP
+// --------------------
+Events.on(engine, "beforeUpdate", () => {
+
+  if (grabConstraint) {
+    grabConstraint.pointA = mouse.position;
+  }
+
+  // ⏸ PAUSED DRAG
+  if (paused && selectedBody) {
+    Body.setPosition(selectedBody, {
+      x: mouse.position.x,
+      y: mouse.position.y
+    });
+
+    Body.setVelocity(selectedBody, { x: 0, y: 0 });
+    Body.setAngularVelocity(selectedBody, 0);
+  }
+
+  // 🔄 ROTATE
+  if (paused && selectedBody && rotating) {
+    const dx = mouse.position.x - lastMouseX;
+    Body.rotate(selectedBody, dx * 0.01);
+  }
+});
+
+Events.on(engine, "afterUpdate", () => {
+  lastMouseX = mouse.position.x;
+});
+
+// --------------------
+// SPAWN BLOCK
+// --------------------
+function spawnBlock() {
+  const block = Bodies.rectangle(
+    (window.innerWidth - 160) / 2,
+    window.innerHeight / 2,
+    90,
+    30,
+    {
+      friction: 0.8,
+      restitution: 0.1
+    }
+  );
+
+  World.add(world, block);
+}
+
+// --------------------
+// PAUSE
+// --------------------
+function togglePause() {
+  paused = !paused;
+
+  engine.gravity.y = paused ? 0 : 1;
+
+  Composite.allBodies(world).forEach(body => {
+    if (body !== ground) {
+      body.isStatic = paused;
+    }
+  });
+}
+
+// --------------------
+// RESIZE
+// --------------------
+window.addEventListener("resize", () => {
+  World.remove(world, ground);
+
+  render.canvas.width = window.innerWidth - 160;
+  render.canvas.height = window.innerHeight;
+
+  ground = createGround();
+  World.add(world, ground);
+});
+</script>
+
+</body>
+</html>
