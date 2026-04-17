@@ -124,7 +124,7 @@ render.canvas.addEventListener("mousedown", () => {
 
     if (Matter.Bounds.contains(body.bounds, mouse.position)) {
 
-      // 🗑 DELETE MODE (no trash button anymore)
+      // DELETE
       if (deleting) {
         World.remove(world, body);
         return;
@@ -132,7 +132,7 @@ render.canvas.addEventListener("mousedown", () => {
 
       selectedBody = body;
 
-      // 🧲 HINGE ONLY WHEN RUNNING
+      // HINGE ONLY WHEN RUNNING
       if (!paused) {
         const offset = {
           x: mouse.position.x - body.position.x,
@@ -140,11 +140,11 @@ render.canvas.addEventListener("mousedown", () => {
         };
 
         grabConstraint = Constraint.create({
-          pointA: mouse.position,
+          pointA: { x: mouse.position.x, y: mouse.position.y }, // FIXED
           bodyB: body,
           pointB: offset,
-          stiffness: 0.9,
-          damping: 0.1
+          stiffness: 0.2,
+          damping: 0.2
         });
 
         World.add(world, grabConstraint);
@@ -172,11 +172,13 @@ render.canvas.addEventListener("mouseup", () => {
 // --------------------
 Events.on(engine, "beforeUpdate", () => {
 
+  // Update constraint position manually (important fix)
   if (grabConstraint) {
-    grabConstraint.pointA = mouse.position;
+    grabConstraint.pointA.x = mouse.position.x;
+    grabConstraint.pointA.y = mouse.position.y;
   }
 
-  // ⏸ PAUSED DRAG
+  // PAUSED DRAG (no hinge)
   if (paused && selectedBody) {
     Body.setPosition(selectedBody, {
       x: mouse.position.x,
@@ -187,7 +189,7 @@ Events.on(engine, "beforeUpdate", () => {
     Body.setAngularVelocity(selectedBody, 0);
   }
 
-  // 🔄 ROTATE
+  // ROTATE
   if (paused && selectedBody && rotating) {
     const dx = mouse.position.x - lastMouseX;
     Body.rotate(selectedBody, dx * 0.01);
